@@ -3,13 +3,14 @@ package com.investhub.api.service;
 import com.investhub.api.domain.Asset;
 import com.investhub.api.domain.Transaction;
 import com.investhub.api.dto.request.CreateTransactionRequest;
+import com.investhub.api.dto.response.PagedResponse;
 import com.investhub.api.dto.response.TransactionResponse;
 import com.investhub.api.exception.BusinessValidationException;
 import com.investhub.api.exception.ResourceNotFoundException;
 import com.investhub.api.repository.AssetRepository;
 import com.investhub.api.repository.TransactionRepository;
 import java.math.BigDecimal;
-import java.util.List;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,13 +56,13 @@ public class TransactionService {
 	}
 
 	@Transactional(readOnly = true)
-	public List<TransactionResponse> findByAssetId(Long assetId) {
+	public PagedResponse<TransactionResponse> findByAssetId(Long assetId, Pageable pageable) {
 		if (!assetRepository.existsById(assetId)) {
 			throw new ResourceNotFoundException("Ativo não encontrado: id=" + assetId);
 		}
-		return transactionRepository.findByAsset_IdOrderByOccurredAtDesc(assetId).stream()
-				.map(TransactionResponse::from)
-				.toList();
+		return PagedResponse.from(transactionRepository
+				.findByAsset_Id(assetId, pageable)
+				.map(TransactionResponse::from));
 	}
 
 	private void validatePositiveAmount(BigDecimal value, String fieldName) {

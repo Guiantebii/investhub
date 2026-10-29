@@ -132,7 +132,11 @@ Metadados: **InvestHub API** · versão **1.0.0**
 | Método | Caminho | Descrição | HTTP |
 |--------|---------|-----------|------|
 | `POST` | `/transactions` | Registra transação (`quantity` e `unitPrice` > 0) | `201` |
-| `GET` | `/transactions/asset/{assetId}` | Histórico do ativo (data desc.) | `200` / `404` |
+| `GET` | `/transactions/asset/{assetId}` | Histórico **paginado** do ativo | `200` / `404` |
+
+Query params (Spring Data): `page` (0-based), `size` (padrão 20, máx. 100), `sort` (padrão `occurredAt,desc`).
+
+Resposta: **`PagedResponse<TransactionResponse>`** (`content`, `page`, `size`, `totalElements`, `totalPages`, `first`, `last`).
 
 **Tipos de transação:** `BUY`, `SELL`, `DIVIDEND`, `FEE`  
 **Tipos de ativo:** `STOCK`, `FII`, `ETF`, `BDR`, `CRYPTO`, `OTHER`
@@ -168,6 +172,9 @@ curl -s -X POST http://localhost:8080/transactions \
   -H 'Content-Type: application/json' \
   -d '{"assetId":1,"type":"BUY","occurredAt":"2026-03-15","quantity":100,"unitPrice":36.50,"fees":4.90}'
 
+# Histórico paginado (página 0, 10 itens)
+curl -s 'http://localhost:8080/transactions/asset/1?page=0&size=10&sort=occurredAt,desc'
+
 # Resumo da carteira
 curl -s http://localhost:8080/portfolio/summary
 ```
@@ -200,8 +207,17 @@ Corpo **`ApiErrorResponse`**:
 Arquivo: `investhub-api/src/main/resources/application.properties`
 
 - JDBC → `localhost:5433` / `gerenciador_investimentos`  
-- `spring.jpa.hibernate.ddl-auto=update` (desenvolvimento)  
+- **Flyway** — migrations em `src/main/resources/db/migration/` (`V1__baseline.sql`)  
+- `spring.jpa.hibernate.ddl-auto=validate` (schema gerenciado pelo Flyway)  
 - Credenciais de dev no properties — use variáveis de ambiente ou profiles em produção  
+
+**Banco Docker já existente (criado com `ddl-auto=update`):** recrie o volume uma vez para o Flyway aplicar o baseline:
+
+```bash
+cd investhub-api && docker compose down -v && docker compose up -d
+```
+
+Testes: `./mvnw verify` (Testcontainers + MockMvc; exige Docker).
 
 Docker: `.env` local (ignorado pelo Git); modelo em `.env.example`.
 
@@ -209,9 +225,9 @@ Docker: `.env` local (ignorado pelo Git); modelo em `.env.example`.
 
 ## Roadmap
 
+- [x] Flyway + paginação de transações + testes (Testcontainers / MockMvc) — **Fase 4**  
 - [ ] Posição líquida com `SELL` e custo médio ajustado  
-- [ ] Testes de integração (MockMvc / Testcontainers)  
-- [ ] Migrações Flyway/Liquibase (substituir `ddl-auto=update` em prod)  
+- [ ] Integração Brapi (cotações) + rentabilidade mark-to-market  
 - [ ] Autenticação e multi-carteira  
 
 ---

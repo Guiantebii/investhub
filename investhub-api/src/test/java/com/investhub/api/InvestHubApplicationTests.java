@@ -1,13 +1,11 @@
 package com.investhub.api;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
-@SpringBootTest
-class InvestHubApplicationTests {
+@Testcontainers
+class InvestHubApplicationTests extends AbstractPostgresIntegrationTest {
 
 	@Test
-	void contextLoads() {
-	}
-
+	void contextLoads() {}
 }
