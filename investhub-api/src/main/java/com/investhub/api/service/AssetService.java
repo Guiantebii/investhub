@@ -4,6 +4,7 @@ import com.investhub.api.domain.Asset;
 import com.investhub.api.dto.request.CreateAssetRequest;
 import com.investhub.api.dto.response.AssetResponse;
 import com.investhub.api.exception.DuplicateSymbolException;
+import com.investhub.api.exception.ResourceNotFoundException;
 import com.investhub.api.repository.AssetRepository;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -34,5 +35,13 @@ public class AssetService {
 	@Transactional(readOnly = true)
 	public List<AssetResponse> findAll() {
 		return assetRepository.findAll().stream().map(AssetResponse::from).toList();
+	}
+
+	@Transactional(readOnly = true)
+	public AssetResponse findById(Long id) {
+		Asset asset = assetRepository
+				.findById(id)
+				.orElseThrow(() -> new ResourceNotFoundException("Ativo não encontrado: id=" + id));
+		return AssetResponse.from(asset);
 	}
 }
