@@ -1,5 +1,6 @@
 package com.investhub.api.controller;
 
+import static com.investhub.api.support.SecurityTestHelpers.authenticatedJwt;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -33,6 +34,7 @@ class AssetControllerIntegrationTest extends AbstractPostgresIntegrationTest {
 	@Test
 	void shouldCreateAssetAndNormalizeSymbol() throws Exception {
 		mockMvc.perform(post("/assets")
+						.with(authenticatedJwt())
 						.contentType(APPLICATION_JSON)
 						.content(
 								"""
@@ -55,9 +57,9 @@ class AssetControllerIntegrationTest extends AbstractPostgresIntegrationTest {
 				"""
 				{"symbol":"VALE3","name":"Vale","assetType":"STOCK","currency":"BRL"}
 				""";
-		mockMvc.perform(post("/assets").contentType(APPLICATION_JSON).content(body))
+		mockMvc.perform(post("/assets").with(authenticatedJwt()).contentType(APPLICATION_JSON).content(body))
 				.andExpect(status().isCreated());
-		mockMvc.perform(post("/assets").contentType(APPLICATION_JSON).content(body))
+		mockMvc.perform(post("/assets").with(authenticatedJwt()).contentType(APPLICATION_JSON).content(body))
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.status", is(409)))
 				.andExpect(jsonPath("$.message").exists());
@@ -65,7 +67,7 @@ class AssetControllerIntegrationTest extends AbstractPostgresIntegrationTest {
 
 	@Test
 	void shouldReturn404WhenAssetNotFound() throws Exception {
-		mockMvc.perform(get("/assets/{id}", 99999L))
+		mockMvc.perform(get("/assets/{id}", 99999L).with(authenticatedJwt()))
 				.andExpect(status().isNotFound())
 				.andExpect(jsonPath("$.status", is(404)));
 	}
@@ -73,6 +75,7 @@ class AssetControllerIntegrationTest extends AbstractPostgresIntegrationTest {
 	@Test
 	void shouldReturn400WhenRequestIsInvalid() throws Exception {
 		mockMvc.perform(post("/assets")
+						.with(authenticatedJwt())
 						.contentType(APPLICATION_JSON)
 						.content(
 								"""
@@ -85,6 +88,7 @@ class AssetControllerIntegrationTest extends AbstractPostgresIntegrationTest {
 	@Test
 	void shouldListAssets() throws Exception {
 		mockMvc.perform(post("/assets")
+						.with(authenticatedJwt())
 						.contentType(APPLICATION_JSON)
 						.content(
 								"""
@@ -92,7 +96,7 @@ class AssetControllerIntegrationTest extends AbstractPostgresIntegrationTest {
 								"""))
 				.andExpect(status().isCreated());
 
-		mockMvc.perform(get("/assets"))
+		mockMvc.perform(get("/assets").with(authenticatedJwt()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$[0].symbol", is("ITUB4")));
 	}
