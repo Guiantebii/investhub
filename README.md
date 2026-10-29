@@ -19,11 +19,13 @@ Backend de portfólio pessoal com camadas claras (domínio → serviço → API)
 | Camada | Tecnologia |
 |--------|------------|
 | **Linguagem** | Java 17 |
-| **Framework** | Spring Boot 4.x (Web MVC, Data JPA, Bean Validation) |
+| **Framework** | Spring Boot 4.x (Web MVC, Data JPA, Bean Validation, Security) |
+| **Autenticação** | JWT (OAuth2 Resource Server, HS256) |
 | **Documentação** | springdoc-openapi — Swagger UI / OpenAPI 3 |
 | **Banco de dados** | PostgreSQL 16 (Alpine) |
 | **Infraestrutura local** | Docker & Docker Compose |
-| **Build** | Maven Wrapper (`./mvnw`) |
+| **Build / qualidade** | Maven Wrapper (`./mvnw`), JaCoCo (cobertura), GitHub Actions CI |
+| **Testes** | Testcontainers, WireMock, MockMvc, Spring Security Test |
 
 Pacote base: **`com.investhub.api`** · Classe principal: **`InvestHubApplication`**
 
@@ -35,17 +37,19 @@ Pacote base: **`com.investhub.api`** · Classe principal: **`InvestHubApplicatio
 gerenciador-investimentos/
 ├── README.md
 ├── .gitignore
+├── .github/workflows/investhub-api-ci.yml
 └── investhub-api/
     ├── docker-compose.yml
     ├── .env.example
     ├── pom.xml
     └── src/main/java/com/investhub/api/
-        ├── config/          # OpenAPI
+        ├── config/          # Security, JWT, OpenAPI, cache, Brapi
         ├── controller/
         ├── domain/
         ├── dto/
         ├── exception/
         ├── repository/
+        ├── security/
         ├── service/
         └── web/             # GlobalExceptionHandler, ApiErrorResponse
 ```
@@ -65,39 +69,61 @@ cd investhub/investhub-api
 
 ---
 
-## 1. Subir o banco de dados (PostgreSQL — porta 5433)
+## 1. Variáveis de ambiente
+
+Copie o modelo e ajuste os valores locais (o arquivo `.env` **não** vai para o Git):
+
+```bash
+cd investhub-api
+cp .env.example .env
+```
+
+| Variável | Uso |
+|----------|-----|
+| `POSTGRES_*` | Credenciais e porta do container Docker |
+| `INVESTHUB_DB_*` | JDBC da aplicação (deve bater com o Postgres local) |
+| `INVESTHUB_JWT_SECRET` | Chave simétrica JWT (mín. **32 caracteres**) |
+
+Antes de subir a API, exporte as variáveis (o Spring Boot **não** lê `.env` sozinho):
+
+```bash
+set -a && source .env && set +a
+```
+
+---
+
+## 2. Subir o banco de dados (PostgreSQL — porta 5433)
 
 O container usa a porta **5433** no host para não conflitar com Postgres na **5432**.
 
 ```bash
 cd investhub-api
-cp .env.example .env   # opcional — defaults já funcionam
 docker compose up -d
 docker compose ps
 ```
 
-| Parâmetro | Valor (dev) |
-|-----------|-------------|
+| Parâmetro | Valor (dev — ver `.env.example`) |
+|-----------|-------------------------------------|
 | Host | `localhost:5433` |
 | Banco | `gerenciador_investimentos` |
-| Usuário | `gerenciador_app` |
-| Senha | `gerenciador_dev` |
 | Container | `gerenciador_investimentos_pg` |
 
 Parar: `docker compose down` · Apagar volume: `docker compose down -v` (cuidado).
 
 ---
 
-## 2. Rodar a aplicação
+## 3. Rodar a aplicação
 
 ```bash
 cd investhub-api
+set -a && source .env && set +a
 ./mvnw spring-boot:run
 ```
 
 Alternativa com build limpo:
 
 ```bash
+set -a && source .env && set +a
 ./mvnw clean spring-boot:run
 ```
 
@@ -106,20 +132,59 @@ Alternativa com build limpo:
 
 ---
 
-## 3. Documentação interativa (Swagger)
+## 4. Documentação interativa (Swagger)
 
 | Recurso | URL |
 |---------|-----|
 | Swagger UI | http://localhost:8080/swagger-ui.html |
 | OpenAPI JSON | http://localhost:8080/v3/api-docs |
 
+Use **Authorize** com `Bearer <accessToken>` (token obtido em `/auth/login`).
+
 Metadados: **InvestHub API** · versão **1.0.0**
+
+---
+
+## 5. Autenticação (JWT)
+
+Rotas de negócio (`/assets`, `/transactions`, `/portfolio`) exigem cabeçalho:
+
+`Authorization: Bearer <accessToken>`
+
+Endpoints públicos: `/auth/register`, `/auth/login`, Swagger e OpenAPI.
+
+### Registro
+
+`POST /auth/register` — cria usuário (e-mail único, senha com mínimo 8 caracteres). Resposta **201** sem expor o hash da senha.
+
+### Login
+
+`POST /auth/login` — valida credenciais e devolve:
+
+```json
+{
+  "accessToken": "<jwt>",
+  "tokenType": "Bearer",
+  "expiresIn": 3600
+}
+```
+
+Token emitido com **HS256**; claim `sub` = id do usuário. Validade padrão: **1 hora** (`investhub.jwt.access-token-ttl`).
+
+> **Fase 6 (Opção A):** a API está protegida por JWT, mas os dados de ativos/transações ainda são **globais** (sem isolamento por usuário). Multi-carteira: Fase 7.
 
 ---
 
 ## Endpoints da API (REST)
 
-### Ativos (`/assets`)
+### Autenticação (`/auth`)
+
+| Método | Caminho | Descrição | HTTP |
+|--------|---------|-----------|------|
+| `POST` | `/auth/register` | Cadastra usuário | `201` / `409` |
+| `POST` | `/auth/login` | Obtém JWT | `200` / `401` |
+
+### Ativos (`/assets`) — autenticado
 
 | Método | Caminho | Descrição | HTTP |
 |--------|---------|-----------|------|
@@ -127,7 +192,7 @@ Metadados: **InvestHub API** · versão **1.0.0**
 | `GET` | `/assets` | Lista todos os ativos | `200` |
 | `GET` | `/assets/{id}` | Detalhe por ID | `200` / `404` |
 
-### Transações (`/transactions`)
+### Transações (`/transactions`) — autenticado
 
 | Método | Caminho | Descrição | HTTP |
 |--------|---------|-----------|------|
@@ -141,42 +206,51 @@ Resposta: **`PagedResponse<TransactionResponse>`** (`content`, `page`, `size`, `
 **Tipos de transação:** `BUY`, `SELL`, `DIVIDEND`, `FEE`  
 **Tipos de ativo:** `STOCK`, `FII`, `ETF`, `BDR`, `CRYPTO`, `OTHER`
 
-### Carteira (`/portfolio`)
+### Carteira (`/portfolio`) — autenticado
 
 | Método | Caminho | Descrição | HTTP |
 |--------|---------|-----------|------|
-| `GET` | `/portfolio/summary` | Posição consolidada e totais | `200` |
+| `GET` | `/portfolio/summary` | Posição consolidada, mark-to-market (Brapi) e totais | `200` |
 
-**Regra do resumo (Fase 3):** apenas transações **`BUY`**.
-
-- `totalQuantity` — soma das quantidades compradas  
-- `totalInvested` — Σ (`quantity × unitPrice` + `fees`)  
-- `averagePrice` — `totalInvested ÷ totalQuantity` (escala 4, `HALF_UP`)  
-- `totalAllocated` — soma investida nas posições com quantidade > 0  
-- `totalAssetsRegistered` — total de ativos cadastrados  
-
-`SELL` e ajuste de posição líquida: evolução futura (ver roadmap).
+**Custo médio (compras):** transações **`BUY`** entram na base de custo; **`SELL`** ainda não reduz posição líquida (evolução futura).
 
 ---
 
 ## Exemplos com `curl`
 
 ```bash
-# Cadastrar ativo
-curl -s -X POST http://localhost:8080/assets \
+BASE=http://localhost:8080
+
+# 1) Registrar usuário
+curl -s -X POST "$BASE/auth/register" \
   -H 'Content-Type: application/json' \
+  -d '{"email":"investidor@example.com","password":"senha-segura"}'
+
+# 2) Login — guardar o accessToken
+TOKEN=$(curl -s -X POST "$BASE/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"investidor@example.com","password":"senha-segura"}' \
+  | jq -r '.accessToken')
+
+AUTH="Authorization: Bearer $TOKEN"
+
+# 3) Cadastrar ativo
+curl -s -X POST "$BASE/assets" \
+  -H 'Content-Type: application/json' \
+  -H "$AUTH" \
   -d '{"symbol":"petr4","name":"Petrobras PN","assetType":"STOCK","currency":"BRL"}'
 
-# Compra (aporte)
-curl -s -X POST http://localhost:8080/transactions \
+# 4) Compra (aporte) — ajuste assetId conforme resposta anterior
+curl -s -X POST "$BASE/transactions" \
   -H 'Content-Type: application/json' \
+  -H "$AUTH" \
   -d '{"assetId":1,"type":"BUY","occurredAt":"2026-03-15","quantity":100,"unitPrice":36.50,"fees":4.90}'
 
-# Histórico paginado (página 0, 10 itens)
-curl -s 'http://localhost:8080/transactions/asset/1?page=0&size=10&sort=occurredAt,desc'
+# 5) Histórico paginado
+curl -s -H "$AUTH" "$BASE/transactions/asset/1?page=0&size=10&sort=occurredAt,desc"
 
-# Resumo da carteira
-curl -s http://localhost:8080/portfolio/summary
+# 6) Resumo da carteira
+curl -s -H "$AUTH" "$BASE/portfolio/summary"
 ```
 
 ---
@@ -197,19 +271,19 @@ Corpo **`ApiErrorResponse`**:
 | HTTP | Situação |
 |------|----------|
 | **400** | Validação de entrada ou `BusinessValidationException` |
+| **401** | JWT ausente/inválido ou credenciais de login incorretas |
 | **404** | `ResourceNotFoundException` |
-| **409** | `symbol` duplicado |
+| **409** | `symbol` ou e-mail duplicado |
 
 ---
 
 ## Configuração
 
-Arquivo: `investhub-api/src/main/resources/application.properties`
+Arquivo principal: `investhub-api/src/main/resources/application.properties`
 
-- JDBC → `localhost:5433` / `gerenciador_investimentos`  
-- **Flyway** — migrations em `src/main/resources/db/migration/` (`V1__baseline.sql`)  
-- `spring.jpa.hibernate.ddl-auto=validate` (schema gerenciado pelo Flyway)  
-- Credenciais de dev no properties — use variáveis de ambiente ou profiles em produção  
+- JDBC e JWT via **variáveis de ambiente** (sem segredos no repositório)
+- **Flyway** — migrations em `src/main/resources/db/migration/`
+- `spring.jpa.hibernate.ddl-auto=validate`
 
 **Banco Docker já existente (criado com `ddl-auto=update`):** recrie o volume uma vez para o Flyway aplicar o baseline:
 
@@ -217,18 +291,29 @@ Arquivo: `investhub-api/src/main/resources/application.properties`
 cd investhub-api && docker compose down -v && docker compose up -d
 ```
 
-Testes: `./mvnw verify` (Testcontainers + MockMvc; exige Docker).
+### Testes e cobertura
 
-Docker: `.env` local (ignorado pelo Git); modelo em `.env.example`.
+```bash
+cd investhub-api
+./mvnw verify
+```
+
+- **Testcontainers** + **MockMvc** (exige Docker)
+- Relatório **JaCoCo:** `investhub-api/target/site/jacoco/index.html` (gerado na fase `verify`)
+
+### CI (GitHub Actions)
+
+Workflow `.github/workflows/investhub-api-ci.yml`: em cada push/PR na branch `main` que altere `investhub-api/**`, roda `./mvnw verify` (testes + JaCoCo).
 
 ---
 
 ## Roadmap
 
-- [x] Flyway + paginação de transações + testes (Testcontainers / MockMvc) — **Fase 4**  
-- [ ] Posição líquida com `SELL` e custo médio ajustado  
-- [ ] Integração Brapi (cotações) + rentabilidade mark-to-market  
-- [ ] Autenticação e multi-carteira  
+- [x] Flyway + paginação + testes de integração — **Fase 4**
+- [x] Cotações Brapi + mark-to-market — **Fase 5**
+- [x] JWT, JaCoCo, CI GitHub Actions — **Fase 6**
+- [ ] Multi-carteira (dados isolados por usuário) — **Fase 7**
+- [ ] Posição líquida com `SELL` e custo médio ajustado
 
 ---
 

@@ -1,5 +1,6 @@
 package com.investhub.api.controller;
 
+import static com.investhub.api.support.SecurityTestHelpers.authenticatedJwt;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -42,6 +43,7 @@ class TransactionControllerIntegrationTest extends AbstractPostgresIntegrationTe
 	@Test
 	void shouldCreateTransaction() throws Exception {
 		mockMvc.perform(post("/transactions")
+						.with(authenticatedJwt())
 						.contentType(APPLICATION_JSON)
 						.content(
 								"""
@@ -63,6 +65,7 @@ class TransactionControllerIntegrationTest extends AbstractPostgresIntegrationTe
 	@Test
 	void shouldReturn404WhenAssetDoesNotExist() throws Exception {
 		mockMvc.perform(post("/transactions")
+						.with(authenticatedJwt())
 						.contentType(APPLICATION_JSON)
 						.content(
 								"""
@@ -81,6 +84,7 @@ class TransactionControllerIntegrationTest extends AbstractPostgresIntegrationTe
 	@Test
 	void shouldReturn400WhenQuantityIsNotPositive() throws Exception {
 		mockMvc.perform(post("/transactions")
+						.with(authenticatedJwt())
 						.contentType(APPLICATION_JSON)
 						.content(
 								"""
@@ -100,6 +104,7 @@ class TransactionControllerIntegrationTest extends AbstractPostgresIntegrationTe
 	@Test
 	void shouldReturn400WhenUnitPriceIsNotPositive() throws Exception {
 		mockMvc.perform(post("/transactions")
+						.with(authenticatedJwt())
 						.contentType(APPLICATION_JSON)
 						.content(
 								"""
@@ -119,6 +124,7 @@ class TransactionControllerIntegrationTest extends AbstractPostgresIntegrationTe
 	@Test
 	void shouldReturn400WhenBeanValidationFails() throws Exception {
 		mockMvc.perform(post("/transactions")
+						.with(authenticatedJwt())
 						.contentType(APPLICATION_JSON)
 						.content(
 								"""

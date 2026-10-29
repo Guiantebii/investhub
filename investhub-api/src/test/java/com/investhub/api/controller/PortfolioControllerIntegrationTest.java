@@ -1,5 +1,6 @@
 package com.investhub.api.controller;
 
+import static com.investhub.api.support.SecurityTestHelpers.authenticatedJwt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -58,7 +59,7 @@ class PortfolioControllerIntegrationTest extends AbstractPostgresIntegrationTest
 	void shouldExposePortfolioSummaryWithMarkToMarketFields() throws Exception {
 		when(brapiQuoteService.getCachedRegularMarketPrice(anyString())).thenReturn(new BigDecimal("40.0000"));
 
-		mockMvc.perform(get("/portfolio/summary"))
+		mockMvc.perform(get("/portfolio/summary").with(authenticatedJwt()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.totalAllocated").value(300.0))
 				.andExpect(jsonPath("$.totalMarketValue").value(400.0))

@@ -1,5 +1,6 @@
 package com.investhub.api;
 
+import static com.investhub.api.support.SecurityTestHelpers.authenticatedJwt;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -56,7 +57,7 @@ class TransactionPaginationIntegrationTest extends AbstractPostgresIntegrationTe
 
 	@Test
 	void shouldReturnFirstPageWithDefaultSize() throws Exception {
-		mockMvc.perform(get("/transactions/asset/{assetId}", assetId))
+		mockMvc.perform(get("/transactions/asset/{assetId}", assetId).with(authenticatedJwt()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.content", hasSize(20)))
 				.andExpect(jsonPath("$.page", is(0)))
@@ -69,7 +70,7 @@ class TransactionPaginationIntegrationTest extends AbstractPostgresIntegrationTe
 
 	@Test
 	void shouldReturnLastPage() throws Exception {
-		mockMvc.perform(get("/transactions/asset/{assetId}?page=1&size=20", assetId))
+		mockMvc.perform(get("/transactions/asset/{assetId}?page=1&size=20", assetId).with(authenticatedJwt()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.content", hasSize(5)))
 				.andExpect(jsonPath("$.page", is(1)))
@@ -78,6 +79,6 @@ class TransactionPaginationIntegrationTest extends AbstractPostgresIntegrationTe
 
 	@Test
 	void shouldReturn404WhenAssetDoesNotExist() throws Exception {
-		mockMvc.perform(get("/transactions/asset/{assetId}", 99999L)).andExpect(status().isNotFound());
+		mockMvc.perform(get("/transactions/asset/{assetId}", 99999L).with(authenticatedJwt())).andExpect(status().isNotFound());
 	}
 }
