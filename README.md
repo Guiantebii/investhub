@@ -34,7 +34,7 @@ O Postgres usa a porta **5433** no host para não conflitar com outros container
 
 ```bash
 cd investhub-api
-cp .env.example .env   # opcional — valores padrão já funcionam
+cp .env.example .env  
 docker compose up -d
 docker compose ps
 ```
