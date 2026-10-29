@@ -1,0 +1,72 @@
+package com.investhub.api.service;
+
+import com.investhub.api.domain.Asset;
+import com.investhub.api.domain.Transaction;
+import com.investhub.api.dto.request.CreateTransactionRequest;
+import com.investhub.api.dto.response.TransactionResponse;
+import com.investhub.api.exception.BusinessValidationException;
+import com.investhub.api.exception.ResourceNotFoundException;
+import com.investhub.api.repository.AssetRepository;
+import com.investhub.api.repository.TransactionRepository;
+import java.math.BigDecimal;
+import java.util.List;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class TransactionService {
+
+	private static final BigDecimal ZERO = BigDecimal.ZERO;
+
+	private final TransactionRepository transactionRepository;
+	private final AssetRepository assetRepository;
+
+	public TransactionService(TransactionRepository transactionRepository, AssetRepository assetRepository) {
+		this.transactionRepository = transactionRepository;
+		this.assetRepository = assetRepository;
+	}
+
+	@Transactional
+	public TransactionResponse create(CreateTransactionRequest request) {
+		Asset asset = assetRepository
+				.findById(request.assetId())
+				.orElseThrow(() -> new ResourceNotFoundException("Ativo não encontrado: id=" + request.assetId()));
+
+		validatePositiveAmount(request.quantity(), "quantity");
+		validatePositiveAmount(request.unitPrice(), "unitPrice");
+
+		BigDecimal fees = request.fees() != null ? request.fees() : ZERO;
+		if (fees.compareTo(ZERO) < 0) {
+			throw new BusinessValidationException("fees não pode ser negativo");
+		}
+
+		Transaction transaction = new Transaction(
+				asset,
+				request.type(),
+				request.occurredAt(),
+				request.quantity(),
+				request.unitPrice(),
+				fees,
+				request.notes());
+
+		asset.addTransaction(transaction);
+		Transaction saved = transactionRepository.save(transaction);
+		return TransactionResponse.from(saved);
+	}
+
+	@Transactional(readOnly = true)
+	public List<TransactionResponse> findByAssetId(Long assetId) {
+		if (!assetRepository.existsById(assetId)) {
+			throw new ResourceNotFoundException("Ativo não encontrado: id=" + assetId);
+		}
+		return transactionRepository.findByAsset_IdOrderByOccurredAtDesc(assetId).stream()
+				.map(TransactionResponse::from)
+				.toList();
+	}
+
+	private void validatePositiveAmount(BigDecimal value, String fieldName) {
+		if (value == null || value.compareTo(ZERO) <= 0) {
+			throw new BusinessValidationException(fieldName + " deve ser maior que zero");
+		}
+	}
+}

@@ -1,0 +1,55 @@
+# Build / compilados
+**/target/
+**/*.class
+**/*.jar
+**/*.war
+!**/src/main/**/target/
+!**/src/test/**/target/
+**/build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# Maven Wrapper (jar baixado localmente)
+**/.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.project
+.classpath
+.settings/
+.factorypath
+.apt_generated
+.springBeans
+.sts4-cache
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# Cursor / editor local
+.cursor/
+**/.cursorrules
+
+# Ambiente e segredos
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+**/credentials.json
+
+# Docker / volumes locais (dados do Postgres no host)
+docker-data/
+*.log
+
+# SO
+.DS_Store
+Thumbs.db
+
+# Spring Boot
+HELP.md

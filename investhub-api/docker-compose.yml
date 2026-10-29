@@ -1,0 +1,34 @@
+# Postgres dedicado ao Gerenciador de Investimentos.
+# Host 5433 evita conflito com projetos antigos que usam 5432 (StatZone, postgres-spring, etc.).
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: gerenciador_investimentos_pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-gerenciador_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gerenciador_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-gerenciador_investimentos}
+    ports:
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - gerenciador_investimentos_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - gerenciador_investimentos_net
+
+volumes:
+  gerenciador_investimentos_pg_data:
+
+networks:
+  gerenciador_investimentos_net:
+    name: gerenciador_investimentos_net

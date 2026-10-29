@@ -1,0 +1,3 @@
+# Herda regras da raiz; entradas úteis ao abrir só este módulo no IDE
+.env
+target/
