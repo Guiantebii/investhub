@@ -63,11 +63,3 @@ A aplicação sobe em `http://localhost:8080` (porta padrão Spring Boot).
 | `GET` | `/assets` | Listar ativos |
 | `POST` | `/transactions` | Registrar transação/aporte |
 | `GET` | `/transactions/asset/{assetId}` | Listar transações de um ativo |
-
-## Variáveis e perfil
-
-Configuração em `investhub-api/src/main/resources/application.properties`. Não commite senhas reais; use `.env` apenas para o Docker (arquivo ignorado pelo Git).
-
-## Licença
-
-Projeto de portfólio — defina a licença conforme sua preferência antes de publicar no GitHub.
