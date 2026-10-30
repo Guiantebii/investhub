@@ -409,7 +409,3 @@ docker build -t investhub-api:local .
 - [x] Docker multi-stage + Render Blueprint (Postgres + Web) — **Fase 9**
 
 ---
-
-## Licença
-
-Projeto de portfólio — defina a licença (ex.: MIT) conforme publicação no GitHub.
