@@ -17,6 +17,8 @@ services:
     dockerfilePath: ./Dockerfile
     healthCheckPath: /v3/api-docs
     envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
       - key: INVESTHUB_JWT_SECRET
         sync: false
       - key: INVESTHUB_DB_URL
