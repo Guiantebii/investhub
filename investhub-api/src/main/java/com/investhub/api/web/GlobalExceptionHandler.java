@@ -3,6 +3,7 @@ package com.investhub.api.web;
 import com.investhub.api.exception.BusinessValidationException;
 import com.investhub.api.exception.DuplicateEmailException;
 import com.investhub.api.exception.DuplicateSymbolException;
+import com.investhub.api.exception.InsufficientPositionException;
 import com.investhub.api.exception.ResourceNotFoundException;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
@@ -36,6 +37,12 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(BusinessValidationException.class)
 	public ResponseEntity<ApiErrorResponse> handleBusinessValidation(BusinessValidationException ex) {
 		return ResponseEntity.badRequest().body(ApiErrorResponse.of(HttpStatus.BAD_REQUEST, ex.getMessage()));
+	}
+
+	@ExceptionHandler(InsufficientPositionException.class)
+	public ResponseEntity<ApiErrorResponse> handleInsufficientPosition(InsufficientPositionException ex) {
+		return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+				.body(ApiErrorResponse.of(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage()));
 	}
 
 	@ExceptionHandler(MethodArgumentNotValidException.class)

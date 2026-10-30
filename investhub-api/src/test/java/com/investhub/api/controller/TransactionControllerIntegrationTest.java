@@ -136,6 +136,96 @@ class TransactionControllerIntegrationTest extends AbstractPostgresIntegrationTe
 	}
 
 	@Test
+	void shouldReturn422WhenSellExceedsAvailablePosition() throws Exception {
+		mockMvc.perform(post("/transactions")
+						.with(jwtForUser(userId))
+						.contentType(APPLICATION_JSON)
+						.content(
+								"""
+								{
+								  "assetId": %d,
+								  "type": "SELL",
+								  "occurredAt": "2026-02-01",
+								  "quantity": 999,
+								  "unitPrice": 10.00
+								}
+								"""
+										.formatted(assetId)))
+				.andExpect(status().isUnprocessableEntity())
+				.andExpect(jsonPath("$.status", is(422)));
+
+		mockMvc.perform(post("/transactions")
+						.with(jwtForUser(userId))
+						.contentType(APPLICATION_JSON)
+						.content(
+								"""
+								{
+								  "assetId": %d,
+								  "type": "BUY",
+								  "occurredAt": "2026-02-01",
+								  "quantity": 10,
+								  "unitPrice": 10.00
+								}
+								"""
+										.formatted(assetId)))
+				.andExpect(status().isCreated());
+
+		mockMvc.perform(post("/transactions")
+						.with(jwtForUser(userId))
+						.contentType(APPLICATION_JSON)
+						.content(
+								"""
+								{
+								  "assetId": %d,
+								  "type": "SELL",
+								  "occurredAt": "2026-02-02",
+								  "quantity": 11,
+								  "unitPrice": 12.00
+								}
+								"""
+										.formatted(assetId)))
+				.andExpect(status().isUnprocessableEntity())
+				.andExpect(jsonPath("$.status", is(422)))
+				.andExpect(jsonPath("$.message").exists());
+	}
+
+	@Test
+	void shouldCreateSellWhenPositionIsSufficient() throws Exception {
+		mockMvc.perform(post("/transactions")
+						.with(jwtForUser(userId))
+						.contentType(APPLICATION_JSON)
+						.content(
+								"""
+								{
+								  "assetId": %d,
+								  "type": "BUY",
+								  "occurredAt": "2026-02-01",
+								  "quantity": 100,
+								  "unitPrice": 10.00
+								}
+								"""
+										.formatted(assetId)))
+				.andExpect(status().isCreated());
+
+		mockMvc.perform(post("/transactions")
+						.with(jwtForUser(userId))
+						.contentType(APPLICATION_JSON)
+						.content(
+								"""
+								{
+								  "assetId": %d,
+								  "type": "SELL",
+								  "occurredAt": "2026-02-02",
+								  "quantity": 40,
+								  "unitPrice": 12.00
+								}
+								"""
+										.formatted(assetId)))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.type", is("SELL")));
+	}
+
+	@Test
 	void shouldReturn400WhenBeanValidationFails() throws Exception {
 		mockMvc.perform(post("/transactions")
 						.with(jwtForUser(userId))

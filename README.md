@@ -10,7 +10,7 @@ O sistema prioriza **precisão financeira rigorosa**: valores monetários, preç
 
 ## Objetivo do projeto
 
-Backend de portfólio pessoal com camadas claras (domínio → serviço → API), persistência relacional e cálculos **sem `double`**. Contrato HTTP via DTOs; entidades JPA ficam na camada de persistência.
+Backend de portfólio pessoal **por usuário** (multi-carteira via JWT), com camadas claras (domínio → serviço → API), persistência relacional e cálculos **sem `double`**. Contrato HTTP via DTOs; entidades JPA ficam na camada de persistência.
 
 ---
 
@@ -171,7 +171,56 @@ Endpoints públicos: `/auth/register`, `/auth/login`, Swagger e OpenAPI.
 
 Token emitido com **HS256**; claim `sub` = id do usuário. Validade padrão: **1 hora** (`investhub.jwt.access-token-ttl`).
 
-> **Fase 6 (Opção A):** a API está protegida por JWT, mas os dados de ativos/transações ainda são **globais** (sem isolamento por usuário). Multi-carteira: Fase 7.
+---
+
+## 6. Isolamento de dados (multi-carteira — Fase 7)
+
+Cada usuário autenticado opera **apenas sobre a própria carteira**. O escopo vem do JWT: serviços leem o `sub` (id do usuário) via `SecurityUtils` e filtram persistência por `user_id`.
+
+| Regra | Comportamento |
+|--------|----------------|
+| **Ativos e transações** | Coluna `user_id` (FK → `users`), migration `V3__add_user_to_investments.sql` |
+| **Symbol único** | Por usuário (`uk_assets_user_symbol`) — dois investidores podem cadastrar `PETR4` |
+| **Consultas** | Repositórios exigem `userId` (`findByIdAndUser_Id`, etc.) |
+| **Outro tenant** | ID de ativo/transação de outro usuário → **404** (sem vazar existência) |
+| **Carteira** | `/portfolio/summary` consolida só ativos/transações do token atual |
+
+Fluxo resumido:
+
+```text
+Authorization: Bearer <JWT>  →  sub = userId  →  services/repositories  →  WHERE user_id = ?
+```
+
+**Upgrade local:** a `V3` remove ativos/transações legados (pré multi-tenant). Após atualizar o código, recrie o volume se necessário:
+
+```bash
+cd investhub-api && docker compose down -v && docker compose up -d
+```
+
+---
+
+## 7. Posição líquida e vendas (SELL — Fase 8)
+
+O resumo da carteira e as validações de venda usam o **`AssetPositionCalculator`**: uma única fonte de verdade para quantidade, preço médio e valor investido (sempre com `BigDecimal`).
+
+### Regras financeiras
+
+| Conceito | Regra |
+|----------|--------|
+| **Quantidade líquida** | Σ quantidades **`BUY`** − Σ quantidades **`SELL`** (por ativo e usuário) |
+| **Preço médio** | Σ (`quantity × unitPrice` + `fees`) das **compras** ÷ quantidade **comprada** — **não muda** ao registrar uma venda |
+| **Total investido** | `quantidade líquida × preço médio` (custo da posição ainda em carteira) |
+| **Mark-to-market** | Cotação Brapi × quantidade líquida; P/L sobre o `totalInvested` recalculado |
+
+**Exemplo:** compra de 100 ações a R$ 10,00 (PM = 10) → venda de 40 → carteira mostra **60** ações, PM **10**, investido **600**.
+
+### Validação de venda (`POST /transactions` com `SELL`)
+
+Antes de persistir, o sistema calcula a posição líquida **atual** do ativo. Se a quantidade da venda for maior que a disponível (ou não houver posição), responde **422 Unprocessable Entity** (`InsufficientPositionException`).
+
+### Ativos com posição zerada
+
+Se a quantidade líquida chegar a **zero** (venda total), o ativo **não entra** na lista `positions` do `/portfolio/summary` (sem erro de mark-to-market). O cadastro do ativo permanece em `/assets` para novos aportes.
 
 ---
 
@@ -188,15 +237,15 @@ Token emitido com **HS256**; claim `sub` = id do usuário. Validade padrão: **1
 
 | Método | Caminho | Descrição | HTTP |
 |--------|---------|-----------|------|
-| `POST` | `/assets` | Cadastra ativo (`symbol` único, normalizado para maiúsculas) | `201` |
-| `GET` | `/assets` | Lista todos os ativos | `200` |
-| `GET` | `/assets/{id}` | Detalhe por ID | `200` / `404` |
+| `POST` | `/assets` | Cadastra ativo (`symbol` único **neste usuário**, normalizado para maiúsculas) | `201` |
+| `GET` | `/assets` | Lista **os** ativos do usuário autenticado | `200` |
+| `GET` | `/assets/{id}` | Detalhe por ID (somente se pertencer ao usuário) | `200` / `404` |
 
 ### Transações (`/transactions`) — autenticado
 
 | Método | Caminho | Descrição | HTTP |
 |--------|---------|-----------|------|
-| `POST` | `/transactions` | Registra transação (`quantity` e `unitPrice` > 0) | `201` |
+| `POST` | `/transactions` | Registra transação (`quantity` e `unitPrice` > 0); **`SELL`** valida saldo | `201` / `422` |
 | `GET` | `/transactions/asset/{assetId}` | Histórico **paginado** do ativo | `200` / `404` |
 
 Query params (Spring Data): `page` (0-based), `size` (padrão 20, máx. 100), `sort` (padrão `occurredAt,desc`).
@@ -210,9 +259,9 @@ Resposta: **`PagedResponse<TransactionResponse>`** (`content`, `page`, `size`, `
 
 | Método | Caminho | Descrição | HTTP |
 |--------|---------|-----------|------|
-| `GET` | `/portfolio/summary` | Posição consolidada, mark-to-market (Brapi) e totais | `200` |
+| `GET` | `/portfolio/summary` | Posição **líquida** consolidada, mark-to-market (Brapi) e totais | `200` |
 
-**Custo médio (compras):** transações **`BUY`** entram na base de custo; **`SELL`** ainda não reduz posição líquida (evolução futura).
+Posição e custo médio seguem a **Fase 8** (secção 7): compras formam o preço médio; vendas reduzem só a quantidade líquida.
 
 ---
 
@@ -246,10 +295,16 @@ curl -s -X POST "$BASE/transactions" \
   -H "$AUTH" \
   -d '{"assetId":1,"type":"BUY","occurredAt":"2026-03-15","quantity":100,"unitPrice":36.50,"fees":4.90}'
 
-# 5) Histórico paginado
+# 5) Venda parcial (ex.: 40 de 100) — posição líquida passa a 60 no summary
+curl -s -X POST "$BASE/transactions" \
+  -H 'Content-Type: application/json' \
+  -H "$AUTH" \
+  -d '{"assetId":1,"type":"SELL","occurredAt":"2026-04-01","quantity":40,"unitPrice":38.00,"fees":4.90}'
+
+# 6) Histórico paginado
 curl -s -H "$AUTH" "$BASE/transactions/asset/1?page=0&size=10&sort=occurredAt,desc"
 
-# 6) Resumo da carteira
+# 7) Resumo da carteira
 curl -s -H "$AUTH" "$BASE/portfolio/summary"
 ```
 
@@ -272,8 +327,9 @@ Corpo **`ApiErrorResponse`**:
 |------|----------|
 | **400** | Validação de entrada ou `BusinessValidationException` |
 | **401** | JWT ausente/inválido ou credenciais de login incorretas |
-| **404** | `ResourceNotFoundException` |
-| **409** | `symbol` ou e-mail duplicado |
+| **404** | Recurso inexistente **ou** fora do escopo do usuário autenticado |
+| **409** | `symbol` duplicado **no mesmo usuário**, ou e-mail duplicado |
+| **422** | Venda (`SELL`) com quantidade maior que a posição líquida disponível |
 
 ---
 
@@ -312,8 +368,8 @@ Workflow `.github/workflows/investhub-api-ci.yml`: em cada push/PR na branch `ma
 - [x] Flyway + paginação + testes de integração — **Fase 4**
 - [x] Cotações Brapi + mark-to-market — **Fase 5**
 - [x] JWT, JaCoCo, CI GitHub Actions — **Fase 6**
-- [ ] Multi-carteira (dados isolados por usuário) — **Fase 7**
-- [ ] Posição líquida com `SELL` e custo médio ajustado
+- [x] Multi-carteira (isolamento por `user_id` + JWT) — **Fase 7**
+- [x] Posição líquida com `SELL`, preço médio imutável na venda e validação **422** — **Fase 8**
 
 ---
 
