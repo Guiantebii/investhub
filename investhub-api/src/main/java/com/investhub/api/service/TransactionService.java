@@ -2,15 +2,19 @@ package com.investhub.api.service;
 
 import com.investhub.api.domain.Asset;
 import com.investhub.api.domain.Transaction;
+import com.investhub.api.domain.TransactionType;
 import com.investhub.api.dto.request.CreateTransactionRequest;
 import com.investhub.api.dto.response.PagedResponse;
 import com.investhub.api.dto.response.TransactionResponse;
 import com.investhub.api.exception.BusinessValidationException;
+import com.investhub.api.exception.InsufficientPositionException;
 import com.investhub.api.exception.ResourceNotFoundException;
 import com.investhub.api.repository.AssetRepository;
 import com.investhub.api.repository.TransactionRepository;
 import com.investhub.api.security.SecurityUtils;
+import com.investhub.api.service.AssetPositionCalculator.Snapshot;
 import java.math.BigDecimal;
+import java.util.List;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,6 +47,10 @@ public class TransactionService {
 			throw new BusinessValidationException("fees não pode ser negativo");
 		}
 
+		if (request.type() == TransactionType.SELL) {
+			validateSellDoesNotExceedPosition(userId, asset, request.quantity());
+		}
+
 		Transaction transaction = new Transaction(
 				asset,
 				request.type(),
@@ -71,6 +79,15 @@ public class TransactionService {
 	private void validatePositiveAmount(BigDecimal value, String fieldName) {
 		if (value == null || value.compareTo(ZERO) <= 0) {
 			throw new BusinessValidationException(fieldName + " deve ser maior que zero");
+		}
+	}
+
+	private void validateSellDoesNotExceedPosition(Long userId, Asset asset, BigDecimal sellQuantity) {
+		List<Transaction> existing =
+				transactionRepository.findByUser_IdAndAsset_Id(userId, asset.getId());
+		Snapshot snapshot = AssetPositionCalculator.fromTransactions(existing);
+		if (sellQuantity.compareTo(snapshot.netQuantity()) > 0) {
+			throw new InsufficientPositionException(snapshot.netQuantity(), sellQuantity);
 		}
 	}
 }

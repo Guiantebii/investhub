@@ -9,13 +9,12 @@ import com.investhub.api.integration.brapi.BrapiQuoteService;
 import com.investhub.api.repository.AssetRepository;
 import com.investhub.api.repository.TransactionRepository;
 import com.investhub.api.security.SecurityUtils;
+import com.investhub.api.service.AssetPositionCalculator.Snapshot;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,7 +25,6 @@ public class PortfolioService {
 	private static final BigDecimal ONE_HUNDRED = new BigDecimal("100");
 	private static final int MONEY_SCALE = 4;
 	private static final int PERCENTAGE_SCALE = 4;
-	private static final int QUANTITY_SCALE = 8;
 
 	private final AssetRepository assetRepository;
 	private final TransactionRepository transactionRepository;
@@ -45,10 +43,6 @@ public class PortfolioService {
 	public PortfolioSummaryResponse getSummary() {
 		Long userId = SecurityUtils.requireCurrentUserId();
 		List<Asset> assets = assetRepository.findByUser_IdOrderBySymbolAsc(userId);
-		List<Transaction> buyTransactions = transactionRepository.findByUser_IdAndType(userId, TransactionType.BUY);
-
-		Map<Long, List<Transaction>> buysByAssetId = buyTransactions.stream()
-				.collect(Collectors.groupingBy(transaction -> transaction.getAsset().getId()));
 
 		BigDecimal totalAllocated = ZERO;
 		BigDecimal totalMarketValue = ZERO;
@@ -62,43 +56,33 @@ public class PortfolioService {
 				.toList();
 
 		for (Asset asset : sortedAssets) {
-			List<Transaction> assetBuys = buysByAssetId.getOrDefault(asset.getId(), List.of());
+			List<Transaction> assetTransactions =
+					transactionRepository.findByUser_IdAndAsset_Id(userId, asset.getId());
+			Snapshot snapshot = AssetPositionCalculator.fromTransactions(assetTransactions);
 
-			BigDecimal totalQuantity = assetBuys.stream()
-					.map(Transaction::getQuantity)
-					.reduce(ZERO, BigDecimal::add);
-
-			if (totalQuantity.compareTo(ZERO) <= 0) {
+			if (snapshot.netQuantity().compareTo(ZERO) <= 0) {
 				continue;
 			}
 
-			BigDecimal totalInvested = assetBuys.stream()
-					.map(this::buyTransactionCost)
-					.reduce(ZERO, BigDecimal::add);
-
-			BigDecimal averagePrice = totalInvested.divide(totalQuantity, MONEY_SCALE, RoundingMode.HALF_UP);
-
-			totalQuantity = totalQuantity.setScale(QUANTITY_SCALE, RoundingMode.HALF_UP);
-			totalInvested = totalInvested.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
-
-			MarkToMarket markToMarket = calculateMarkToMarket(asset.getSymbol(), totalQuantity, totalInvested);
+			MarkToMarket markToMarket =
+					calculateMarkToMarket(asset.getSymbol(), snapshot.netQuantity(), snapshot.totalInvested());
 
 			positions.add(new PositionSummaryResponse(
 					asset.getSymbol(),
-					totalQuantity,
-					totalInvested,
-					averagePrice,
+					snapshot.netQuantity(),
+					snapshot.totalInvested(),
+					snapshot.averagePrice(),
 					markToMarket.currentPrice(),
 					markToMarket.marketValue(),
 					markToMarket.profitOrLoss(),
 					markToMarket.profitOrLossPercentage()));
 
-			totalAllocated = totalAllocated.add(totalInvested);
+			totalAllocated = totalAllocated.add(snapshot.totalInvested());
 			if (markToMarket.marketValue() != null) {
 				hasAnyMarketValue = true;
 				totalMarketValue = totalMarketValue.add(markToMarket.marketValue());
 				totalProfitOrLoss = totalProfitOrLoss.add(markToMarket.profitOrLoss());
-				totalInvestedWithQuote = totalInvestedWithQuote.add(totalInvested);
+				totalInvestedWithQuote = totalInvestedWithQuote.add(snapshot.totalInvested());
 			}
 		}
 
@@ -121,7 +105,7 @@ public class PortfolioService {
 				positions);
 	}
 
-	private MarkToMarket calculateMarkToMarket(String symbol, BigDecimal totalQuantity, BigDecimal totalInvested) {
+	private MarkToMarket calculateMarkToMarket(String symbol, BigDecimal netQuantity, BigDecimal totalInvested) {
 		BigDecimal currentPrice = brapiQuoteService.getCachedRegularMarketPrice(symbol);
 		if (currentPrice == null) {
 			return new MarkToMarket(null, null, null, null);
@@ -129,7 +113,7 @@ public class PortfolioService {
 
 		currentPrice = currentPrice.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
 		BigDecimal marketValue =
-				currentPrice.multiply(totalQuantity).setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+				currentPrice.multiply(netQuantity).setScale(MONEY_SCALE, RoundingMode.HALF_UP);
 		BigDecimal profitOrLoss = marketValue.subtract(totalInvested).setScale(MONEY_SCALE, RoundingMode.HALF_UP);
 		BigDecimal profitOrLossPercentage = totalInvested.compareTo(ZERO) > 0
 				? profitOrLoss
@@ -138,13 +122,6 @@ public class PortfolioService {
 				: null;
 
 		return new MarkToMarket(currentPrice, marketValue, profitOrLoss, profitOrLossPercentage);
-	}
-
-	private BigDecimal buyTransactionCost(Transaction transaction) {
-		return transaction
-				.getQuantity()
-				.multiply(transaction.getUnitPrice())
-				.add(transaction.getFees());
 	}
 
 	private record MarkToMarket(

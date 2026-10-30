@@ -77,7 +77,7 @@ class PortfolioServiceIntegrationTest extends AbstractPostgresIntegrationTest {
 	}
 
 	@Test
-	void shouldIgnoreNonBuyTransactionsForCostBasis() {
+	void shouldReflectNetPositionAfterPartialSellKeepingAveragePrice() {
 		User user = userRepository.findById(userId).orElseThrow();
 		Asset asset = assetRepository.save(new Asset(user, "ABEV3", "Ambev", AssetType.STOCK, "BRL"));
 		transactionRepository.save(new Transaction(
@@ -88,8 +88,25 @@ class PortfolioServiceIntegrationTest extends AbstractPostgresIntegrationTest {
 		PortfolioSummaryResponse summary = callAsUser(userId, () -> portfolioService.getSummary());
 
 		assertThat(summary.positions()).hasSize(1);
-		assertThat(summary.positions().get(0).totalQuantity()).isEqualByComparingTo("100.00000000");
-		assertThat(summary.positions().get(0).totalInvested()).isEqualByComparingTo("1000.0000");
+		assertThat(summary.positions().get(0).totalQuantity()).isEqualByComparingTo("60.00000000");
+		assertThat(summary.positions().get(0).averagePrice()).isEqualByComparingTo("10.0000");
+		assertThat(summary.positions().get(0).totalInvested()).isEqualByComparingTo("600.0000");
+		assertThat(summary.totalAllocated()).isEqualByComparingTo("600.0000");
+	}
+
+	@Test
+	void shouldOmitAssetFromPortfolioWhenPositionIsFullySold() {
+		User user = userRepository.findById(userId).orElseThrow();
+		Asset asset = assetRepository.save(new Asset(user, "WEGE3", "WEG", AssetType.STOCK, "BRL"));
+		transactionRepository.save(new Transaction(
+				asset, TransactionType.BUY, LocalDate.of(2026, 1, 1), new BigDecimal("50"), new BigDecimal("20.0000"), BigDecimal.ZERO, null));
+		transactionRepository.save(new Transaction(
+				asset, TransactionType.SELL, LocalDate.of(2026, 2, 1), new BigDecimal("50"), new BigDecimal("25.0000"), BigDecimal.ZERO, null));
+
+		PortfolioSummaryResponse summary = callAsUser(userId, () -> portfolioService.getSummary());
+
+		assertThat(summary.positions()).isEmpty();
+		assertThat(summary.totalAllocated()).isEqualByComparingTo("0.0000");
 	}
 
 	@Test
