@@ -24,6 +24,7 @@ Backend de portfólio pessoal **por usuário** (multi-carteira via JWT), com cam
 | **Documentação** | springdoc-openapi — Swagger UI / OpenAPI 3 |
 | **Banco de dados** | PostgreSQL 16 (Alpine) |
 | **Infraestrutura local** | Docker & Docker Compose |
+| **Deploy (cloud)** | Docker multi-stage + [Render Blueprint](https://render.com/docs/blueprint-spec) (`render.yaml`) |
 | **Build / qualidade** | Maven Wrapper (`./mvnw`), JaCoCo (cobertura), GitHub Actions CI |
 | **Testes** | Testcontainers, WireMock, MockMvc, Spring Security Test |
 
@@ -36,9 +37,12 @@ Pacote base: **`com.investhub.api`** · Classe principal: **`InvestHubApplicatio
 ```text
 gerenciador-investimentos/
 ├── README.md
+├── render.yaml              # Blueprint Render (Postgres + Web Docker)
 ├── .gitignore
 ├── .github/workflows/investhub-api-ci.yml
 └── investhub-api/
+    ├── Dockerfile           # build Maven + runtime JRE 17
+    ├── docker-entrypoint.sh # JDBC a partir de INVESTHUB_DB_* (Render)
     ├── docker-compose.yml
     ├── .env.example
     ├── pom.xml
@@ -363,6 +367,38 @@ Workflow `.github/workflows/investhub-api-ci.yml`: em cada push/PR na branch `ma
 
 ---
 
+## 8. Deploy na cloud (Render — Fase 9)
+
+Infraestrutura declarada em **`render.yaml`** na raiz do repositório: PostgreSQL gerenciado + serviço web em **Docker** (`investhub-api/Dockerfile`).
+
+| Componente | Detalhe |
+|------------|---------|
+| **Imagem** | Multi-stage: Maven 17 (build) → JRE 17 (runtime), porta **8080** (`PORT` no Render) |
+| **Banco** | Flyway aplica migrations no startup; credenciais injetadas pelo Blueprint |
+| **Secrets** | `INVESTHUB_JWT_SECRET` — definir **manualmente** no dashboard Render (`sync: false`) |
+
+Variáveis ligadas ao Postgres (automáticas via Blueprint):
+
+- `INVESTHUB_DB_URL` — `connectionString` (`postgresql://…`; entrypoint converte para JDBC)
+- `INVESTHUB_DB_USERNAME` / `INVESTHUB_DB_PASSWORD`
+
+### Publicar no Render
+
+1. [Render Dashboard](https://dashboard.render.com/) → **Blueprints** → **New Blueprint Instance** → selecionar este repositório.
+2. Aguardar criação de `investhub-db` e `investhub-api`.
+3. No serviço web, definir **`INVESTHUB_JWT_SECRET`** (mín. 32 caracteres) → redeploy se necessário.
+4. Validar: `https://<investhub-api>.onrender.com/v3/api-docs` e **Authorize** com token de `/auth/login`.
+
+### Build local da imagem (opcional)
+
+```bash
+cd investhub-api
+docker build -t investhub-api:local .
+# Requer .env / variáveis JDBC + JWT para run local
+```
+
+---
+
 ## Roadmap
 
 - [x] Flyway + paginação + testes de integração — **Fase 4**
@@ -370,6 +406,7 @@ Workflow `.github/workflows/investhub-api-ci.yml`: em cada push/PR na branch `ma
 - [x] JWT, JaCoCo, CI GitHub Actions — **Fase 6**
 - [x] Multi-carteira (isolamento por `user_id` + JWT) — **Fase 7**
 - [x] Posição líquida com `SELL`, preço médio imutável na venda e validação **422** — **Fase 8**
+- [x] Docker multi-stage + Render Blueprint (Postgres + Web) — **Fase 9**
 
 ---
 
