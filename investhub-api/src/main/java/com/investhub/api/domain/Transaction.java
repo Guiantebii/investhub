@@ -10,6 +10,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -28,6 +29,10 @@ public class Transaction {
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
+
+	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@JoinColumn(name = "user_id", nullable = false, updatable = false)
+	private User user;
 
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
 	@JoinColumn(name = "asset_id", nullable = false)
@@ -61,11 +66,19 @@ public class Transaction {
 			BigDecimal fees,
 			String notes) {
 		this.asset = asset;
+		this.user = asset.getUser();
 		this.type = type;
 		this.occurredAt = occurredAt;
 		this.quantity = quantity;
 		this.unitPrice = unitPrice;
 		this.fees = fees;
 		this.notes = notes;
+	}
+
+	@PrePersist
+	void assignUserFromAssetIfMissing() {
+		if (user == null && asset != null) {
+			user = asset.getUser();
+		}
 	}
 }
