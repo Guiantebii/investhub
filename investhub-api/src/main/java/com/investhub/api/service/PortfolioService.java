@@ -8,6 +8,7 @@ import com.investhub.api.dto.response.PositionSummaryResponse;
 import com.investhub.api.integration.brapi.BrapiQuoteService;
 import com.investhub.api.repository.AssetRepository;
 import com.investhub.api.repository.TransactionRepository;
+import com.investhub.api.security.SecurityUtils;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
@@ -42,8 +43,9 @@ public class PortfolioService {
 
 	@Transactional(readOnly = true)
 	public PortfolioSummaryResponse getSummary() {
-		List<Asset> assets = assetRepository.findAll();
-		List<Transaction> buyTransactions = transactionRepository.findByType(TransactionType.BUY);
+		Long userId = SecurityUtils.requireCurrentUserId();
+		List<Asset> assets = assetRepository.findByUser_IdOrderBySymbolAsc(userId);
+		List<Transaction> buyTransactions = transactionRepository.findByUser_IdAndType(userId, TransactionType.BUY);
 
 		Map<Long, List<Transaction>> buysByAssetId = buyTransactions.stream()
 				.collect(Collectors.groupingBy(transaction -> transaction.getAsset().getId()));
@@ -112,7 +114,7 @@ public class PortfolioService {
 
 		return new PortfolioSummaryResponse(
 				totalAllocated,
-				assets.size(),
+				assetRepository.countByUser_Id(userId),
 				portfolioMarketValue,
 				portfolioProfitOrLoss,
 				portfolioProfitOrLossPercentage,

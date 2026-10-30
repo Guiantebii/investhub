@@ -9,7 +9,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface TransactionRepository extends JpaRepository<Transaction, Long> {
 
-	Page<Transaction> findByAsset_Id(Long assetId, Pageable pageable);
+	Page<Transaction> findByUser_IdAndAsset_Id(Long userId, Long assetId, Pageable pageable);
 
-	List<Transaction> findByType(TransactionType type);
+	List<Transaction> findByUser_IdAndType(Long userId, TransactionType type);
 }

@@ -9,6 +9,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.investhub.api.AbstractPostgresIntegrationTest;
+import com.investhub.api.repository.AssetRepository;
+import com.investhub.api.repository.TransactionRepository;
 import com.investhub.api.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,8 +29,16 @@ class AuthControllerIntegrationTest extends AbstractPostgresIntegrationTest {
 	@Autowired
 	private UserRepository userRepository;
 
+	@Autowired
+	private AssetRepository assetRepository;
+
+	@Autowired
+	private TransactionRepository transactionRepository;
+
 	@BeforeEach
 	void clean() {
+		transactionRepository.deleteAll();
+		assetRepository.deleteAll();
 		userRepository.deleteAll();
 	}
 

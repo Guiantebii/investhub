@@ -9,6 +9,7 @@ import com.investhub.api.exception.BusinessValidationException;
 import com.investhub.api.exception.ResourceNotFoundException;
 import com.investhub.api.repository.AssetRepository;
 import com.investhub.api.repository.TransactionRepository;
+import com.investhub.api.security.SecurityUtils;
 import java.math.BigDecimal;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -29,8 +30,9 @@ public class TransactionService {
 
 	@Transactional
 	public TransactionResponse create(CreateTransactionRequest request) {
+		Long userId = SecurityUtils.requireCurrentUserId();
 		Asset asset = assetRepository
-				.findById(request.assetId())
+				.findByIdAndUser_Id(request.assetId(), userId)
 				.orElseThrow(() -> new ResourceNotFoundException("Ativo não encontrado: id=" + request.assetId()));
 
 		validatePositiveAmount(request.quantity(), "quantity");
@@ -57,11 +59,12 @@ public class TransactionService {
 
 	@Transactional(readOnly = true)
 	public PagedResponse<TransactionResponse> findByAssetId(Long assetId, Pageable pageable) {
-		if (!assetRepository.existsById(assetId)) {
+		Long userId = SecurityUtils.requireCurrentUserId();
+		if (!assetRepository.findByIdAndUser_Id(assetId, userId).isPresent()) {
 			throw new ResourceNotFoundException("Ativo não encontrado: id=" + assetId);
 		}
 		return PagedResponse.from(transactionRepository
-				.findByAsset_Id(assetId, pageable)
+				.findByUser_IdAndAsset_Id(userId, assetId, pageable)
 				.map(TransactionResponse::from));
 	}
 

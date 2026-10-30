@@ -1,6 +1,6 @@
 package com.investhub.api.controller;
 
-import static com.investhub.api.support.SecurityTestHelpers.authenticatedJwt;
+import static com.investhub.api.support.SecurityTestHelpers.jwtForUser;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -10,12 +10,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.investhub.api.AbstractPostgresIntegrationTest;
 import com.investhub.api.domain.Asset;
 import com.investhub.api.domain.AssetType;
+import com.investhub.api.domain.User;
 import com.investhub.api.repository.AssetRepository;
 import com.investhub.api.repository.TransactionRepository;
+import com.investhub.api.repository.UserRepository;
+import com.investhub.api.support.TestUserFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 
 @AutoConfigureMockMvc
@@ -30,20 +34,30 @@ class TransactionControllerIntegrationTest extends AbstractPostgresIntegrationTe
 	@Autowired
 	private TransactionRepository transactionRepository;
 
+	@Autowired
+	private UserRepository userRepository;
+
+	@Autowired
+	private PasswordEncoder passwordEncoder;
+
 	private Long assetId;
+	private long userId;
 
 	@BeforeEach
 	void seed() {
 		transactionRepository.deleteAll();
 		assetRepository.deleteAll();
-		Asset asset = assetRepository.save(new Asset("BBDC4", "Bradesco", AssetType.STOCK, "BRL"));
+		userRepository.deleteAll();
+		User user = TestUserFactory.persistUser(userRepository, passwordEncoder, "transactions-test@example.com");
+		userId = user.getId();
+		Asset asset = assetRepository.save(new Asset(user, "BBDC4", "Bradesco", AssetType.STOCK, "BRL"));
 		assetId = asset.getId();
 	}
 
 	@Test
 	void shouldCreateTransaction() throws Exception {
 		mockMvc.perform(post("/transactions")
-						.with(authenticatedJwt())
+						.with(jwtForUser(userId))
 						.contentType(APPLICATION_JSON)
 						.content(
 								"""
@@ -65,7 +79,7 @@ class TransactionControllerIntegrationTest extends AbstractPostgresIntegrationTe
 	@Test
 	void shouldReturn404WhenAssetDoesNotExist() throws Exception {
 		mockMvc.perform(post("/transactions")
-						.with(authenticatedJwt())
+						.with(jwtForUser(userId))
 						.contentType(APPLICATION_JSON)
 						.content(
 								"""
@@ -84,7 +98,7 @@ class TransactionControllerIntegrationTest extends AbstractPostgresIntegrationTe
 	@Test
 	void shouldReturn400WhenQuantityIsNotPositive() throws Exception {
 		mockMvc.perform(post("/transactions")
-						.with(authenticatedJwt())
+						.with(jwtForUser(userId))
 						.contentType(APPLICATION_JSON)
 						.content(
 								"""
@@ -104,7 +118,7 @@ class TransactionControllerIntegrationTest extends AbstractPostgresIntegrationTe
 	@Test
 	void shouldReturn400WhenUnitPriceIsNotPositive() throws Exception {
 		mockMvc.perform(post("/transactions")
-						.with(authenticatedJwt())
+						.with(jwtForUser(userId))
 						.contentType(APPLICATION_JSON)
 						.content(
 								"""
@@ -124,7 +138,7 @@ class TransactionControllerIntegrationTest extends AbstractPostgresIntegrationTe
 	@Test
 	void shouldReturn400WhenBeanValidationFails() throws Exception {
 		mockMvc.perform(post("/transactions")
-						.with(authenticatedJwt())
+						.with(jwtForUser(userId))
 						.contentType(APPLICATION_JSON)
 						.content(
 								"""
